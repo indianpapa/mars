@@ -1,15 +1,11 @@
 package recorder
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/ouqiang/goproxy"
@@ -113,66 +109,6 @@ func (r *Recorder) BeforeRequest(ctx *goproxy.Context) {
 	ctx.Data["tx"] = tx
 }
 
-func (r *Recorder) RewriteResp(ctx *goproxy.Context, resp *http.Response) {
-	if strings.HasPrefix(ctx.Req.URL.Host, "xmnup-rxe-1-api.lab.nordigy.ru") && strings.HasPrefix(ctx.Req.URL.Path, "/restapi/v1.0/rooms-client/account") {
-		contentType := getContentType(resp.Header)
-
-		if strings.HasPrefix(contentType, "application/json") {
-			body, err := ioutil.ReadAll(resp.Body)
-
-			if err == nil {
-				rebody, update := r.RewriteBody(body)
-				if update {
-					resp.ContentLength = int64(len(rebody))
-					resp.Body = ioutil.NopCloser(bytes.NewReader(rebody))
-				}
-			}
-		}
-	}
-}
-
-func (r *Recorder) RewriteBody(body []byte) ([]byte, bool) {
-	var jsonObj interface{}
-
-	err := json.Unmarshal(body, &jsonObj)
-
-	if err != nil {
-		fmt.Println("Can not ready json body")
-		return body, false
-	}
-
-	records, ok := jsonObj.(map[string]interface{})["records"]
-
-	hasUpdate := false
-
-	if ok {
-		for _, record := range records.([]interface{}) {
-			recordMap, ok := record.(map[string]interface{})
-
-			if ok {
-				key, ok := recordMap["settingId"].(string)
-				if ok {
-					if strings.HasPrefix(key, "DigitalSignage.PlayEnabled") {
-						recordMap["value"] = "true"
-						hasUpdate = true
-					}
-				}
-			}
-		}
-	}
-
-	if hasUpdate {
-		ret, err := json.Marshal(jsonObj)
-
-		if err == nil {
-			fmt.Println("rewrite body success")
-			return ret, true
-		}
-	}
-
-	return body, false
-}
-
 // BeforeResponse 响应发送前处理
 func (r *Recorder) BeforeResponse(ctx *goproxy.Context, resp *http.Response, err error) {
 	if r.interceptor != nil {
@@ -180,8 +116,6 @@ func (r *Recorder) BeforeResponse(ctx *goproxy.Context, resp *http.Response, err
 	}
 	tx := ctx.Data["tx"].(*Transaction)
 	tx.Duration = time.Now().Sub(tx.StartTime)
-
-	r.RewriteResp(ctx, resp)
 
 	tx.DumpResponse(resp, err)
 }
